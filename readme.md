@@ -28,14 +28,14 @@ Of course, this is not representative of all situations encountered while interp
 ## Test Environment
 
 All of the benchmarks use the following constants:
-```rs
+```rust
 const N: usize = 1_000_000;
 const X_NIL_RATE: usize = 13;
 const Y_NIL_RATE: usize = 33;
 ```
 
 Also, the benchmarks use a simple vec builder helper:
-```rs
+```rust
 fn make_vec<T, F: FnMut (usize) -> T> (mut f: F) -> Vec<T> {
   let mut out = Vec::with_capacity(N);
 
@@ -46,7 +46,7 @@ fn make_vec<T, F: FnMut (usize) -> T> (mut f: F) -> Vec<T> {
 ```
 
 When creating the test arrays, we will use variations on the repeating pattern shown here:
-```rs
+```rust
 /// Fill with number-variant values except when we are at a multiple of `X_NIL_RATE`
 let x = make_vec(|i| if i % X_NIL_RATE == 0 { nil } else { Number(i as f64 * 1.92) });
 
@@ -72,7 +72,7 @@ The various methods are sorted in order of what I perceive to be the most compli
 #### Structure
 
 This is the most straight-forward representation that was tested. It uses a conventional tagged union, and is generally unremarkable:
-```rs
+```rust
 enum Value {
   Nil,
   Number(f64),
@@ -88,7 +88,7 @@ With Rust's pattern matching and variant constructors, no additional code is req
 
 #### Benchmark
 
-```rs
+```rust
 #[bench]
 fn bench_aligned (bencher: &mut Bencher) {
   let x = make_vec(|i| if i % X_NIL_RATE == 0 { Value::Nil } else { Value::Number(i as f64 * 1.92) });
@@ -123,7 +123,7 @@ fn bench_aligned (bencher: &mut Bencher) {
 This is again a rather unremarkable data structure. Here, the discriminator and the data are stored separately in parallel arrays.
 
 The data is stored in a raw union:
-```rs
+```rust
 union ValueData {
   Nil: (),
   Number: f64,
@@ -133,7 +133,7 @@ union ValueData {
 ```
 
 While the discriminant is a separate enum:
-```rs
+```rust
 #[repr(u8)]
 enum ValueKind {
   Nil,
@@ -148,7 +148,7 @@ No additional code is required to support the benchmark.
 
 #### Benchmark
 
-```rs
+```rust
 #[bench]
 fn bench_separated_type_info (bencher: &mut Bencher) {
   let x = make_vec(|i| if i % X_NIL_RATE == 0 { ValueData { Nil: () } } else { ValueData { Number: i as f64 * 1.92 } });
@@ -194,7 +194,7 @@ fn bench_separated_type_info (bencher: &mut Bencher) {
 #### Structure
 
 For this version, the typical tagged union pattern is recreated, but our variant data is type-erased into a packed array of bytes:
-```rs
+```rust
 struct Value {
   discriminant: ValueKind,
   data: [u8; 8]
@@ -204,7 +204,7 @@ struct Value {
 This allows our overall Value to occupy a total of 9 bytes. An additional factor worth noting is that this allows many more type variants. The tradeoff here is that more functionality will be required to manipulate data, and we will have to perform unaligned loads and stores by transforming our data to and from byte arrays.
 
 In order to access these values, a type discriminant enum and convenience methods were created:
-```rs
+```rust
 #[repr(u8)]
 pub enum ValueKind {
   Nil,
@@ -213,12 +213,12 @@ pub enum ValueKind {
   ...
 }
 ```
-```rs
+```rust
 fn is_nil (&self) -> bool { matches!(self.discriminant, ValueKind::Nil) }
 fn is_number (&self) -> bool { matches!(self.discriminant, ValueKind::Number) }
 fn is_userdata (&self) -> bool { matches!(self.discriminant, ValueKind::Userdata) }
 ```
-```rs
+```rust
 unsafe fn as_number_unchecked (&self) -> f64 {
   f64::from_bits(u64::from_ne_bytes(self.data))
 }
@@ -243,7 +243,7 @@ fn as_userdata (&self) -> Option<*mut ()> {
   }
 }
 ```
-```rs
+```rust
 fn from_nil () -> Self {
   Self { discriminant: ValueKind::Nil, data: 0u64.to_ne_bytes() }
 }
@@ -260,7 +260,7 @@ fn from_userdata (data: *mut ()) -> Self {
 
 #### Benchmark
 
-```rs
+```rust
 #[bench]
 fn bench_unaligned (bencher: &mut Bencher) {
   let x = make_vec(|i| if i % X_NIL_RATE == 0 { Value::from_nil() } else { Value::from_number(i as f64 * 1.92) });
@@ -293,7 +293,7 @@ fn bench_unaligned (bencher: &mut Bencher) {
 #### Structure
 
 In this version, the value is simply a newtype wrapper around a word-size integer:
-```rs
+```rust
 struct Value(u64);
 ```
 
@@ -305,7 +305,7 @@ In particular, the representation of `NaN` is specified as having all exponent b
 In addition to this specification, on modern hardware only 48 bits of a 64 bit pointer are used. These are the right-most 48 bits in the above diagram. This leaves us 3 bits free in the middle to work with, yielding 8 possible variants for our "union".
 
 In order to access these values, a type discriminant enum, masks and convenience methods were created:
-```rs
+```rust
 #[repr(u64)]
 enum ValueKind {
   Number   = 0u64 << 48,
@@ -314,7 +314,7 @@ enum ValueKind {
   // ...
 }
 ```
-```rs
+```rust
 const NAN_MASK:  u64 = 0b_0_11111111111_1_000_000000000000000000000000000000000000000000000000;
 const TYPE_MASK: u64 = 0b_0_00000000000_0_111_000000000000000000000000000000000000000000000000;
 const DATA_MASK: u64 = 0b_0_00000000000_0_000_111111111111111111111111111111111111111111111111;
@@ -331,7 +331,7 @@ fn compare_type_segment (&self, discriminator: ValueKind) -> bool {
   self.get_type_segment() == (discriminator as u64)
 }
 ```
-```rs
+```rust
 fn is_number (&self) -> bool {
   !self.is_nan() | self.compare_type_segment(ValueKind::Number)
 }
@@ -344,7 +344,7 @@ fn is_userdata (&self) -> bool {
   self.is_nan() & self.compare_type_segment(ValueKind::Userdata)
 }
 ```
-```rs
+```rust
 unsafe fn as_number_unchecked (&self) -> f64 { *(self as *const _ as *const f64) }
 
 fn as_number (&self) -> Option<f64> {
@@ -366,7 +366,7 @@ fn as_userdata (&self) -> Option<*mut ()> {
 }
 
 ```
-```rs
+```rust
 fn from_number (data: f64) -> Self { unsafe { transmute(data) } }
 fn from_nil () -> Self { Self(Self::NAN_MASK | ValueKind::Nil as u64) }
 fn from_userdata (data: *mut ()) -> Self { Self(data as u64 | Self::NAN_MASK | ValueKind::Userdata as u64) }
@@ -377,7 +377,7 @@ Note that in the convenience method, bitwise operators are used to combine the b
 
 #### Benchmark
 
-```rs
+```rust
 #[bench]
 fn bench_nan_tagged (bencher: &mut Bencher) {
   let x = make_vec(|i| if i % X_NIL_RATE == 0 { Value::from_nil() } else { Value::from_number(i as f64 * 1.92) });
