@@ -3,8 +3,6 @@
 In the interest of performance, I have benchmarked 4 different methods of representation for values inside VMs.
 Of course, this is not representative of all situations encountered while interpreting a typical program; the chosen test case is a "best case scenario" simulating the VM performing math on linear arrays of numbers. That said, in order to add some variance to this test, a few nil values are mixed in to the input arrays.
 
-<a style="position: fixed; right: 0px; bottom: 0px; background-color: white; border-left: 1px solid black; border-top: 1px solid black; padding: 5px;" href="#vm-value-representation-benchmarks">Back to Top</div>
-
 - [Test Environment](#test-environment)
 - [Setup](#setup)
   - [Aligned Tagged Union (Padded)](#aligned-tagged-union-padded)
