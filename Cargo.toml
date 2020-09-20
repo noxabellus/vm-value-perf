@@ -1,0 +1,10 @@
+[package]
+name = "vm-value-perf"
+version = "0.1.0"
+authors = ["noxabellus <noxabellus@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "bench"
+path = "bench.rs"
+crate-type = ["staticlib", "rlib"]
